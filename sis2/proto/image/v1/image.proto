@@ -1,0 +1,83 @@
+syntax = "proto3";
+
+package image.v1;
+
+option go_package = "github.com/ZSultanbek/highload-back/sis2/gen/image/v1;imagev1";
+
+// ImageService is the T9 image-metadata service interface.
+//
+// This is the SAME logical interface exposed over two protocols (gRPC here,
+// REST/JSON in the baseline) so latency and payload size can be compared
+// apples-to-apples. Object bytes / S3 / CDN are out of scope for SIS #2 — this
+// task is about the PROTOCOL carrying the metadata, so storage is an in-memory
+// stub shared by both servers.
+service ImageService {
+  // CreateImage reserves a metadata record. It is idempotent on
+  // idempotency_key: retrying with the same key returns the original record
+  // instead of creating a duplicate.
+  rpc CreateImage(CreateImageRequest) returns (Image);
+
+  // GetImage is the hot path (p99 target). Point lookup by id.
+  rpc GetImage(GetImageRequest) returns (Image);
+
+  // ListImages returns an owner's images, newest first, via keyset pagination.
+  rpc ListImages(ListImagesRequest) returns (ListImagesResponse);
+
+  // DeleteImage soft-deletes a record.
+  rpc DeleteImage(DeleteImageRequest) returns (DeleteImageResponse);
+}
+
+// Status mirrors the two-phase upload lifecycle from SIS #1.
+enum Status {
+  STATUS_UNSPECIFIED = 0;
+  STATUS_PENDING = 1;
+  STATUS_READY = 2;
+  STATUS_DELETED = 3;
+}
+
+// Image is the metadata record. Compare this message's protobuf encoding
+// against the equivalent JSON object for the payload-size measurement.
+message Image {
+  string id = 1;            // ULID / UUIDv7, time-sortable PK
+  string owner_id = 2;      // UUID
+  string bucket = 3;        // S3 bucket holding the bytes
+  string object_key = 4;    // key within the bucket
+  string content_type = 5;  // MIME type, e.g. image/jpeg
+  int64 size_bytes = 6;
+  int32 width = 7;
+  int32 height = 8;
+  string checksum = 9;      // sha256 hex
+  Status status = 10;
+  int64 created_at_unix_ms = 11;
+}
+
+message CreateImageRequest {
+  string owner_id = 1;
+  string content_type = 2;
+  int64 size_bytes = 3;
+  string checksum = 4;
+  // idempotency_key dedups retried creates. Required.
+  string idempotency_key = 5;
+}
+
+message GetImageRequest {
+  string id = 1;
+}
+
+message ListImagesRequest {
+  string owner_id = 1;
+  // cursor is an opaque keyset cursor from a previous page ("" for first page).
+  string cursor = 2;
+  int32 limit = 3;
+}
+
+message ListImagesResponse {
+  repeated Image images = 1;
+  string next_cursor = 2;
+}
+
+message DeleteImageRequest {
+  string id = 1;
+}
+
+message DeleteImageResponse {}
