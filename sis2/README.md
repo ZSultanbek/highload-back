@@ -5,7 +5,9 @@ the chosen protocol **gRPC (HTTP/2 + protobuf)** and a **REST/JSON (HTTP/1.1)**
 baseline, with **idempotency, timeouts and retries**, plus a benchmark of
 **latency and payload size**.
 
-See [`REPORT.md`](./REPORT.md) for the hypotheses, measurements, and conclusions.
+See [`REPORT.md`](./REPORT.md) for the hypotheses and analysis, and
+[`RESULTS.md`](./RESULTS.md) for the captured benchmark numbers (medians over
+multiple runs, with consistency counts) so they can be shown without re-running.
 
 ## Layout
 
