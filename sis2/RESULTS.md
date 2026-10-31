@@ -114,7 +114,11 @@ protocol comparison.
 | H3 — loopback favours REST on median | ✅ **Confirmed**, 20/20 |
 
 **gRPC consistently wins the tail (p95/p99) under load while REST consistently wins the
-median** — and both clear the 100 ms SLO by ~100×. For an internal, SLO-bound,
-high-load metadata service the tail and the ~44% payload saving are the right things to
-optimise for, so gRPC is the justified choice; REST/JSON stays the readable baseline for
-public/browser-facing edges.
+median** — but at 2,000 RPS read / 50 RPS write over **20M files** the protocol isn't the
+bottleneck, and both clear the 100 ms SLO by ~100×, so the latency difference isn't the
+deciding factor. The decisive, guaranteed win is **~44% smaller payloads**: deterministic,
+and it compounds across bandwidth (~320 KB/s saved continuously at 2,000 reads/s), CPU, and
+list/fan-out responses (10 KB vs 18 KB for 50 records) in a way a per-request microsecond
+never does. The tighter tail is a free bonus on the p99 the SLO targets. So gRPC is the
+justified choice for the internal, high-load metadata service; REST/JSON stays the readable
+baseline for public/browser-facing edges.

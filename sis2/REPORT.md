@@ -80,13 +80,17 @@ Retries are only applied to idempotent calls — `GET` is naturally safe, and `C
 | **H2** gRPC better tail latency | 🟨 **Confirmed under concurrency** (p95/p99/max at c=50); **not** at c=1 on loopback |
 | **H3** loopback favours REST on median | ✅ **Confirmed** — REST wins p50 + throughput in both runs |
 
-**Why gRPC is still the right choice for this service** (the SIS #1 justification, now evidenced):
-1. **Payload size is a guaranteed ~44% win** — directly cuts bandwidth and serialization cost, and matters most at the 2,000 RPS read load and across the internal network.
-2. **Tail latency (p95/p99) is what the SLO targets** (`p99 < 100 ms`), and gRPC's multiplexing gives a **tighter, more predictable tail under concurrency** — exactly the regime a high-load service runs in.
-3. The loopback median win for REST **shrinks or reverses with real network RTT**, where gRPC's smaller payloads and connection reuse pay off; the benchmark was deliberately gRPC's worst case.
-4. gRPC provides **deadlines, status codes, and codegen'd contracts as first-class features**, so idempotency/timeouts/retries are native rather than hand-rolled.
+**Why gRPC is the right choice for this service** (the SIS #1 justification, now evidenced). The protocol is **not** the system bottleneck — at 2,000 RPS read / 50 RPS write over 20M files, a single process runs at ~1–7% utilisation and both protocols clear the 100 ms SLO by ~100×. So the latency difference is **not** the deciding factor; the decisive, guaranteed win is byte efficiency:
+
+1. **Payload size is a guaranteed ~44% win (the real reason).** It is deterministic (zero variance), and it *compounds* at scale in a way a per-request microsecond never does:
+   - **Bandwidth:** ~160 B saved per response × 2,000 reads/s ≈ **~320 KB/s saved continuously** — the metric egress bills and NIC capacity are measured in.
+   - **List/fan-out amplifies it:** a response isn't 200 B — `ListImages`×50 was **10 KB vs 18 KB**. Gallery/feed/fan-out responses turn the 44% into real kilobytes per call.
+   - **CPU:** fewer bytes = less serialize/parse per request = more headroom per core = fewer instances at 2,000 RPS.
+2. **Tighter tail under load is a free bonus on the metric the SLO targets.** The SLO is defined on **p99**, and gRPC's multiplexing gives a lower, more predictable p99 under concurrency (8/8 runs). Small and situational — a bonus, not the reason — but it lands on exactly the number the SLO cares about.
+3. **The loopback median win for REST shrinks or reverses with real network RTT**, where gRPC's smaller payloads + connection reuse pay off. The benchmark was deliberately gRPC's worst case (no network).
+4. **Native reliability semantics** — deadlines, status codes, codegen'd contracts are first-class, so idempotency/timeouts/retries are built-in rather than hand-rolled.
 
 **Where REST/JSON still wins:** human-readable, trivially debuggable (curl), browser-native, better single-connection median on a local machine — which is why it remains the right choice for public/browser-facing edges and stays as the baseline here.
 
 ### One-line takeaway
-> Protobuf is unconditionally ~44% smaller; gRPC trades a bit of loopback median latency for a **tighter tail under load** and native reliability semantics — the right trade for an internal, SLO-bound, high-load metadata service, while REST/JSON stays the readable choice at the public edge.
+> At 2,000 RPS over 20M files the protocol isn't the bottleneck, so gRPC's slightly-worse median is irrelevant — you pick it for the guaranteed ~44% byte reduction (which compounds across bandwidth, CPU, and list/fan-out responses) plus a free tighter-tail bonus on the p99 the SLO targets, while REST/JSON stays the readable choice at the public edge.
